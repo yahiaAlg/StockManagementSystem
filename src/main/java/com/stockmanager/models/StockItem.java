@@ -1,4 +1,4 @@
-﻿// StockItem.java - Complete implementation
+// StockItem.java - Complete implementation
 package com.stockmanager.models;
 
 import java.util.UUID;

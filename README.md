@@ -2676,3 +2676,1918 @@ public class AnalyticsPanel extends JPanel {
 }
 
 ```
+
+---
+
+I'll enhance the stock management system by adding user authentication (login/register/logout) and SQLite database integration instead of the current in-memory storage. Let's build these components step by step.
+
+## Step 1: Set up SQLite Database
+
+First, let's create a database helper class to manage our SQLite connection:
+
+```java
+// DatabaseHelper.java
+package com.stockmanager.utils;
+
+import java.sql.*;
+
+/**
+ * Helper class for SQLite database operations
+ */
+public class DatabaseHelper {
+    private static final String DB_URL = "jdbc:sqlite:stockmanager.db";
+    private static Connection connection;
+
+    /**
+     * Get database connection
+     */
+    public static Connection getConnection() throws SQLException {
+        if (connection == null || connection.isClosed()) {
+            connection = DriverManager.getConnection(DB_URL);
+        }
+        return connection;
+    }
+
+    /**
+     * Close the database connection
+     */
+    public static void closeConnection() {
+        try {
+            if (connection != null && !connection.isClosed()) {
+                connection.close();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Initialize database with required tables
+     */
+    public static void initializeDatabase() {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+
+            // Create User table
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS users (" +
+                "id TEXT PRIMARY KEY, " +
+                "username TEXT UNIQUE NOT NULL, " +
+                "password TEXT NOT NULL, " +
+                "fullName TEXT, " +
+                "email TEXT, " +
+                "role TEXT DEFAULT 'user', " +
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP " +
+                ")"
+            );
+
+            // Create Supplier table
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS suppliers (" +
+                "id TEXT PRIMARY KEY, " +
+                "name TEXT NOT NULL, " +
+                "contactInfo TEXT, " +
+                "address TEXT, " +
+                "email TEXT, " +
+                "phone TEXT " +
+                ")"
+            );
+
+            // Create StockItem table
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS stock_items (" +
+                "id TEXT PRIMARY KEY, " +
+                "name TEXT NOT NULL, " +
+                "description TEXT, " +
+                "price REAL NOT NULL, " +
+                "quantity INTEGER NOT NULL, " +
+                "supplier_id TEXT, " +
+                "FOREIGN KEY (supplier_id) REFERENCES suppliers(id) " +
+                ")"
+            );
+
+            // Insert default admin user if not exists
+            PreparedStatement checkAdmin = conn.prepareStatement(
+                "SELECT COUNT(*) FROM users WHERE username = ?"
+            );
+            checkAdmin.setString(1, "admin");
+            ResultSet rs = checkAdmin.executeQuery();
+            if (rs.next() && rs.getInt(1) == 0) {
+                PreparedStatement insertAdmin = conn.prepareStatement(
+                    "INSERT INTO users (id, username, password, fullName, role) VALUES (?, ?, ?, ?, ?)"
+                );
+                insertAdmin.setString(1, "U001");
+                insertAdmin.setString(2, "admin");
+                insertAdmin.setString(3, "admin123"); // In a real app, this should be hashed
+                insertAdmin.setString(4, "System Administrator");
+                insertAdmin.setString(5, "admin");
+                insertAdmin.executeUpdate();
+            }
+
+            // Insert sample data
+            insertSampleData(conn);
+
+        } catch (SQLException e) {
+            System.err.println("Database initialization error: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Insert sample data for demonstration purposes
+     */
+    private static void insertSampleData(Connection conn) throws SQLException {
+        // Check if we already have suppliers
+        PreparedStatement checkSuppliers = conn.prepareStatement(
+            "SELECT COUNT(*) FROM suppliers"
+        );
+        ResultSet rs = checkSuppliers.executeQuery();
+        if (rs.next() && rs.getInt(1) > 0) {
+            return; // We already have data, no need to insert samples
+        }
+
+        // Insert sample suppliers
+        String[] supplierIds = {"S001", "S002", "S003"};
+        String[] supplierNames = {"Tech Supplies Inc.", "Office Essentials", "Furniture Warehouse"};
+        String[] contactInfos = {"Primary Electronics Supplier", "Office Supplies Provider", "Furniture and Fixtures"};
+        String[] addresses = {
+            "123 Tech Ave, Silicon Valley",
+            "456 Office Blvd, Business District",
+            "789 Warehouse Rd, Industrial Zone"
+        };
+        String[] emails = {
+            "info@techsupplies.com",
+            "contact@officeessentials.com",
+            "sales@furniturewarehouse.com"
+        };
+        String[] phones = {"555-1234", "555-5678", "555-9012"};
+
+        PreparedStatement insertSupplier = conn.prepareStatement(
+            "INSERT INTO suppliers (id, name, contactInfo, address, email, phone) VALUES (?, ?, ?, ?, ?, ?)"
+        );
+
+        for (int i = 0; i < supplierIds.length; i++) {
+            insertSupplier.setString(1, supplierIds[i]);
+            insertSupplier.setString(2, supplierNames[i]);
+            insertSupplier.setString(3, contactInfos[i]);
+            insertSupplier.setString(4, addresses[i]);
+            insertSupplier.setString(5, emails[i]);
+            insertSupplier.setString(6, phones[i]);
+            insertSupplier.executeUpdate();
+        }
+
+        // Insert sample stock items
+        String[] itemIds = {"I001", "I002", "I003", "I004", "I005"};
+        String[] itemNames = {"Laptop", "Desk Chair", "Printer", "Paper Reams", "Desk"};
+        String[] descriptions = {
+            "High-performance business laptop",
+            "Ergonomic office chair",
+            "Color laser printer",
+            "A4 printing paper, 500 sheets",
+            "Standard office desk"
+        };
+        double[] prices = {1200.00, 250.00, 350.00, 5.00, 300.00};
+        int[] quantities = {15, 30, 10, 200, 20};
+        String[] itemSupplierIds = {"S001", "S003", "S001", "S002", "S003"};
+
+        PreparedStatement insertItem = conn.prepareStatement(
+            "INSERT INTO stock_items (id, name, description, price, quantity, supplier_id) VALUES (?, ?, ?, ?, ?, ?)"
+        );
+
+        for (int i = 0; i < itemIds.length; i++) {
+            insertItem.setString(1, itemIds[i]);
+            insertItem.setString(2, itemNames[i]);
+            insertItem.setString(3, descriptions[i]);
+            insertItem.setDouble(4, prices[i]);
+            insertItem.setInt(5, quantities[i]);
+            insertItem.setString(6, itemSupplierIds[i]);
+            insertItem.executeUpdate();
+        }
+    }
+}
+```
+
+## Step 2: Create User Model
+
+```java
+// User.java
+package com.stockmanager.models;
+
+import java.util.UUID;
+import java.sql.Timestamp;
+
+/**
+ * Represents a user of the system
+ */
+public class User {
+    private String id;
+    private String username;
+    private String password;
+    private String fullName;
+    private String email;
+    private String role;
+    private Timestamp createdAt;
+
+    // Default constructor
+    public User() {
+        this.id = UUID.randomUUID().toString();
+    }
+
+    // Constructor with basic parameters
+    public User(String username, String password) {
+        this.id = UUID.randomUUID().toString();
+        this.username = username;
+        this.password = password;
+        this.role = "user";
+    }
+
+    // Constructor with all parameters
+    public User(String id, String username, String password, String fullName,
+                String email, String role, Timestamp createdAt) {
+        this.id = id;
+        this.username = username;
+        this.password = password;
+        this.fullName = fullName;
+        this.email = email;
+        this.role = role;
+        this.createdAt = createdAt;
+    }
+
+    // Getters and setters
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+
+    public Timestamp getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Timestamp createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    @Override
+    public String toString() {
+        return username;
+    }
+}
+```
+
+## Step 3: Create Authentication Controller
+
+```java
+// AuthController.java
+package com.stockmanager.controllers;
+
+import com.stockmanager.models.User;
+import com.stockmanager.utils.DatabaseHelper;
+
+import java.sql.*;
+import java.util.UUID;
+
+/**
+ * Controller for user authentication operations
+ */
+public class AuthController {
+    private User currentUser;
+
+    /**
+     * Attempt to login with the provided credentials
+     * @return User object if successful, null otherwise
+     */
+    public User login(String username, String password) {
+        String query = "SELECT * FROM users WHERE username = ? AND password = ?";
+
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setString(1, username);
+            stmt.setString(2, password); // In real app, would compare hashed passwords
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    currentUser = new User(
+                        rs.getString("id"),
+                        rs.getString("username"),
+                        rs.getString("password"),
+                        rs.getString("fullName"),
+                        rs.getString("email"),
+                        rs.getString("role"),
+                        rs.getTimestamp("created_at")
+                    );
+                    return currentUser;
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Login error: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    /**
+     * Register a new user
+     * @return User object if successful, null otherwise
+     */
+    public User register(String username, String password, String fullName, String email) {
+        String query = "INSERT INTO users (id, username, password, fullName, email, role) VALUES (?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            // Check if username already exists
+            PreparedStatement checkStmt = conn.prepareStatement(
+                "SELECT COUNT(*) FROM users WHERE username = ?"
+            );
+            checkStmt.setString(1, username);
+            ResultSet rs = checkStmt.executeQuery();
+
+            if (rs.next() && rs.getInt(1) > 0) {
+                return null; // Username already exists
+            }
+
+            String userId = "U" + UUID.randomUUID().toString().substring(0, 8);
+
+            stmt.setString(1, userId);
+            stmt.setString(2, username);
+            stmt.setString(3, password); // In real app, should hash password
+            stmt.setString(4, fullName);
+            stmt.setString(5, email);
+            stmt.setString(6, "user"); // Default role
+
+            int result = stmt.executeUpdate();
+
+            if (result > 0) {
+                currentUser = new User(userId, username, password, fullName, email, "user", new Timestamp(System.currentTimeMillis()));
+                return currentUser;
+            }
+        } catch (SQLException e) {
+            System.err.println("Registration error: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    /**
+     * Logout the current user
+     */
+    public void logout() {
+        currentUser = null;
+    }
+
+    /**
+     * Get the currently logged in user
+     */
+    public User getCurrentUser() {
+        return currentUser;
+    }
+
+    /**
+     * Check if a user is logged in
+     */
+    public boolean isLoggedIn() {
+        return currentUser != null;
+    }
+
+    /**
+     * Check if current user has admin role
+     */
+    public boolean isAdmin() {
+        return currentUser != null && "admin".equals(currentUser.getRole());
+    }
+
+    /**
+     * Update user profile
+     */
+    public boolean updateProfile(String fullName, String email) {
+        if (currentUser == null) {
+            return false;
+        }
+
+        String query = "UPDATE users SET fullName = ?, email = ? WHERE id = ?";
+
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setString(1, fullName);
+            stmt.setString(2, email);
+            stmt.setString(3, currentUser.getId());
+
+            int result = stmt.executeUpdate();
+
+            if (result > 0) {
+                currentUser.setFullName(fullName);
+                currentUser.setEmail(email);
+                return true;
+            }
+        } catch (SQLException e) {
+            System.err.println("Profile update error: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return false;
+    }
+
+    /**
+     * Change user password
+     */
+    public boolean changePassword(String currentPassword, String newPassword) {
+        if (currentUser == null || !currentPassword.equals(currentUser.getPassword())) {
+            return false;
+        }
+
+        String query = "UPDATE users SET password = ? WHERE id = ?";
+
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setString(1, newPassword); // In real app, should hash password
+            stmt.setString(2, currentUser.getId());
+
+            int result = stmt.executeUpdate();
+
+            if (result > 0) {
+                currentUser.setPassword(newPassword);
+                return true;
+            }
+        } catch (SQLException e) {
+            System.err.println("Password change error: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return false;
+    }
+}
+```
+
+## Step 4: Update StockController to use SQLite
+
+```java
+// StockController.java (Updated)
+package com.stockmanager.controllers;
+
+import com.stockmanager.models.StockItem;
+import com.stockmanager.models.Supplier;
+import com.stockmanager.utils.DatabaseHelper;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Controller for managing stock items (CRUD operations)
+ */
+public class StockController {
+
+    public StockController() {
+        // No initialization needed as we're using database now
+    }
+
+    // Methods for stock items
+    public List<StockItem> getAllStockItems() {
+        List<StockItem> items = new ArrayList<>();
+        String query = "SELECT i.*, s.name as supplier_name, s.contactInfo, s.address, " +
+                       "s.email, s.phone FROM stock_items i " +
+                       "LEFT JOIN suppliers s ON i.supplier_id = s.id";
+
+        try (Connection conn = DatabaseHelper.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(query)) {
+
+            while (rs.next()) {
+                Supplier supplier = new Supplier(
+                    rs.getString("supplier_id"),
+                    rs.getString("supplier_name"),
+                    rs.getString("contactInfo"),
+                    rs.getString("address"),
+                    rs.getString("email"),
+                    rs.getString("phone")
+                );
+
+                StockItem item = new StockItem(
+                    rs.getString("id"),
+                    rs.getString("name"),
+                    rs.getString("description"),
+                    rs.getDouble("price"),
+                    rs.getInt("quantity"),
+                    supplier
+                );
+
+                items.add(item);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error fetching stock items: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return items;
+    }
+
+    public StockItem getStockItemById(String id) {
+        String query = "SELECT i.*, s.name as supplier_name, s.contactInfo, s.address, " +
+                       "s.email, s.phone FROM stock_items i " +
+                       "LEFT JOIN suppliers s ON i.supplier_id = s.id " +
+                       "WHERE i.id = ?";
+
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setString(1, id);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    Supplier supplier = new Supplier(
+                        rs.getString("supplier_id"),
+                        rs.getString("supplier_name"),
+                        rs.getString("contactInfo"),
+                        rs.getString("address"),
+                        rs.getString("email"),
+                        rs.getString("phone")
+                    );
+
+                    return new StockItem(
+                        rs.getString("id"),
+                        rs.getString("name"),
+                        rs.getString("description"),
+                        rs.getDouble("price"),
+                        rs.getInt("quantity"),
+                        supplier
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error fetching stock item: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    public void saveStockItem(StockItem item) {
+        try (Connection conn = DatabaseHelper.getConnection()) {
+            if (getStockItemById(item.getId()) == null) {
+                // Insert new item
+                String query = "INSERT INTO stock_items (id, name, description, price, quantity, supplier_id) " +
+                               "VALUES (?, ?, ?, ?, ?, ?)";
+
+                try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                    stmt.setString(1, item.getId());
+                    stmt.setString(2, item.getName());
+                    stmt.setString(3, item.getDescription());
+                    stmt.setDouble(4, item.getPrice());
+                    stmt.setInt(5, item.getQuantity());
+                    stmt.setString(6, item.getSupplier().getId());
+
+                    stmt.executeUpdate();
+                }
+            } else {
+                // Update existing item
+                String query = "UPDATE stock_items SET name = ?, description = ?, price = ?, " +
+                               "quantity = ?, supplier_id = ? WHERE id = ?";
+
+                try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                    stmt.setString(1, item.getName());
+                    stmt.setString(2, item.getDescription());
+                    stmt.setDouble(3, item.getPrice());
+                    stmt.setInt(4, item.getQuantity());
+                    stmt.setString(5, item.getSupplier().getId());
+                    stmt.setString(6, item.getId());
+
+                    stmt.executeUpdate();
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error saving stock item: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    public void deleteStockItem(String id) {
+        String query = "DELETE FROM stock_items WHERE id = ?";
+
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setString(1, id);
+            stmt.executeUpdate();
+
+        } catch (SQLException e) {
+            System.err.println("Error deleting stock item: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    // Methods for suppliers
+    public List<Supplier> getAllSuppliers() {
+        List<Supplier> suppliers = new ArrayList<>();
+        String query = "SELECT * FROM suppliers";
+
+        try (Connection conn = DatabaseHelper.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(query)) {
+
+            while (rs.next()) {
+                Supplier supplier = new Supplier(
+                    rs.getString("id"),
+                    rs.getString("name"),
+                    rs.getString("contactInfo"),
+                    rs.getString("address"),
+                    rs.getString("email"),
+                    rs.getString("phone")
+                );
+
+                suppliers.add(supplier);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error fetching suppliers: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return suppliers;
+    }
+
+    public Supplier getSupplierById(String id) {
+        String query = "SELECT * FROM suppliers WHERE id = ?";
+
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setString(1, id);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return new Supplier(
+                        rs.getString("id"),
+                        rs.getString("name"),
+                        rs.getString("contactInfo"),
+                        rs.getString("address"),
+                        rs.getString("email"),
+                        rs.getString("phone")
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error fetching supplier: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    public void saveSupplier(Supplier supplier) {
+        try (Connection conn = DatabaseHelper.getConnection()) {
+            if (getSupplierById(supplier.getId()) == null) {
+                // Insert new supplier
+                String query = "INSERT INTO suppliers (id, name, contactInfo, address, email, phone) " +
+                               "VALUES (?, ?, ?, ?, ?, ?)";
+
+                try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                    stmt.setString(1, supplier.getId());
+                    stmt.setString(2, supplier.getName());
+                    stmt.setString(3, supplier.getContactInfo());
+                    stmt.setString(4, supplier.getAddress());
+                    stmt.setString(5, supplier.getEmail());
+                    stmt.setString(6, supplier.getPhone());
+
+                    stmt.executeUpdate();
+                }
+            } else {
+                // Update existing supplier
+                String query = "UPDATE suppliers SET name = ?, contactInfo = ?, address = ?, " +
+                               "email = ?, phone = ? WHERE id = ?";
+
+                try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                    stmt.setString(1, supplier.getName());
+                    stmt.setString(2, supplier.getContactInfo());
+                    stmt.setString(3, supplier.getAddress());
+                    stmt.setString(4, supplier.getEmail());
+                    stmt.setString(5, supplier.getPhone());
+                    stmt.setString(6, supplier.getId());
+
+                    stmt.executeUpdate();
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error saving supplier: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    public void deleteSupplier(String id) {
+        // Check if the supplier is used by any stock items
+        String checkQuery = "SELECT COUNT(*) FROM stock_items WHERE supplier_id = ?";
+
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement checkStmt = conn.prepareStatement(checkQuery)) {
+
+            checkStmt.setString(1, id);
+
+            try (ResultSet rs = checkStmt.executeQuery()) {
+                if (rs.next() && rs.getInt(1) > 0) {
+                    throw new SQLException("Cannot delete supplier: it is used by one or more stock items");
+                }
+            }
+
+            // If not used, delete the supplier
+            String deleteQuery = "DELETE FROM suppliers WHERE id = ?";
+
+            try (PreparedStatement deleteStmt = conn.prepareStatement(deleteQuery)) {
+                deleteStmt.setString(1, id);
+                deleteStmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            System.err.println("Error deleting supplier: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    // Search methods
+    public List<StockItem> searchStockItems(String query) {
+        List<StockItem> items = new ArrayList<>();
+        String searchQuery = "SELECT i.*, s.name as supplier_name, s.contactInfo, s.address, " +
+                             "s.email, s.phone FROM stock_items i " +
+                             "LEFT JOIN suppliers s ON i.supplier_id = s.id " +
+                             "WHERE i.name LIKE ? OR i.description LIKE ?";
+
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(searchQuery)) {
+
+            String searchPattern = "%" + query + "%";
+            stmt.setString(1, searchPattern);
+            stmt.setString(2, searchPattern);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    Supplier supplier = new Supplier(
+                        rs.getString("supplier_id"),
+                        rs.getString("supplier_name"),
+                        rs.getString("contactInfo"),
+                        rs.getString("address"),
+                        rs.getString("email"),
+                        rs.getString("phone")
+                    );
+
+                    StockItem item = new StockItem(
+                        rs.getString("id"),
+                        rs.getString("name"),
+                        rs.getString("description"),
+                        rs.getDouble("price"),
+                        rs.getInt("quantity"),
+                        supplier
+                    );
+
+                    items.add(item);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error searching stock items: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return items;
+    }
+}
+```
+
+## Step 5: Create Login UI
+
+```java
+// LoginPanel.java
+package com.stockmanager.ui.auth;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+
+import com.stockmanager.controllers.AuthController;
+import com.stockmanager.models.User;
+import com.stockmanager.ui.theme.DraculaTheme;
+import com.stockmanager.utils.UIUtils;
+
+/**
+ * Panel for user login
+ */
+public class LoginPanel extends JPanel {
+    private AuthController authController;
+    private LoginListener loginListener;
+
+    private JTextField usernameField;
+    private JPasswordField passwordField;
+    private JButton loginButton;
+    private JButton registerButton;
+
+    /**
+     * Interface for login event handling
+     */
+    public interface LoginListener {
+        void onLoginSuccess(User user);
+        void onSwitchToRegister();
+    }
+
+    public LoginPanel(AuthController authController, LoginListener listener) {
+        this.authController = authController;
+        this.loginListener = listener;
+
+        // Initialize the UI
+        initializeUI();
+    }
+
+    private void initializeUI() {
+        // Set up the panel
+        setBackground(DraculaTheme.BACKGROUND);
+        setLayout(new BorderLayout(20, 20));
+        setBorder(BorderFactory.createEmptyBorder(30, 30, 30, 30));
+
+        // Create header
+        JLabel headerLabel = new JLabel("Stock Management System");
+        headerLabel.setFont(new Font("Dialog", Font.BOLD, 24));
+        headerLabel.setForeground(DraculaTheme.PURPLE);
+        headerLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        headerLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 30, 0));
+
+        // Create login form
+        JPanel formPanel = new JPanel(new GridBagLayout());
+        formPanel.setBackground(DraculaTheme.BACKGROUND);
+        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 100, 20, 100));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(10, 10, 10, 10);
+
+        // Form title
+        JLabel formTitle = UIUtils.createHeaderLabel("Login");
+        formTitle.setHorizontalAlignment(SwingConstants.CENTER);
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.gridwidth = 2;
+        formPanel.add(formTitle, gbc);
+
+        // Username field
+        JLabel usernameLabel = UIUtils.createStyledLabel("Username:");
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.gridwidth = 1;
+        formPanel.add(usernameLabel, gbc);
+
+        usernameField = UIUtils.createStyledTextField();
+        gbc.gridx = 1;
+        gbc.gridy = 1;
+        formPanel.add(usernameField, gbc);
+
+        // Password field
+        JLabel passwordLabel = UIUtils.createStyledLabel("Password:");
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        formPanel.add(passwordLabel, gbc);
+
+        passwordField = new JPasswordField();
+        passwordField.setBackground(DraculaTheme.CURRENT_LINE);
+        passwordField.setForeground(DraculaTheme.FOREGROUND);
+        passwordField.setCaretColor(DraculaTheme.FOREGROUND);
+        passwordField.setBorder(UIUtils.createTextFieldBorder());
+        gbc.gridx = 1;
+        gbc.gridy = 2;
+        formPanel.add(passwordField, gbc);
+
+        // Login button
+        loginButton = UIUtils.createStyledButton("Login");
+        gbc.gridx = 0;
+        gbc.gridy = 3;
+        gbc.gridwidth = 2;
+        gbc.insets = new Insets(30, 10, 10, 10);
+        formPanel.add(loginButton, gbc);
+
+        // Register link
+        JPanel registerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        registerPanel.setBackground(DraculaTheme.BACKGROUND);
+
+        JLabel registerLabel = UIUtils.createStyledLabel("Don't have an account?");
+        registerButton = new JButton("Register");
+        registerButton.setBorderPainted(false);
+        registerButton.setContentAreaFilled(false);
+        registerButton.setForeground(DraculaTheme.CYAN);
+        registerButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+        registerPanel.add(registerLabel);
+        registerPanel.add(registerButton);
+
+        gbc.gridx = 0;
+        gbc.gridy = 4;
+        gbc.insets = new Insets(10, 10, 10, 10);
+        formPanel.add(registerPanel, gbc);
+
+        // Add components to main panel
+        add(headerLabel, BorderLayout.NORTH);
+        add(formPanel, BorderLayout.CENTER);
+
+        // Set action listeners
+        loginButton.addActionListener(this::handleLogin);
+        passwordField.addActionListener(this::handleLogin);
+        registerButton.addActionListener(e -> {
+            if (loginListener != null) {
+                loginListener.onSwitchToRegister();
+            }
+        });
+    }
+
+    private void handleLogin(ActionEvent e) {
+        String username = usernameField.getText().trim();
+        String password = new String(passwordField.getPassword());
+
+        if (username.isEmpty() || password.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Please enter both username and password.",
+                "Login Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
+
+        User user = authController.login(username, password);
+
+        if (user != null) {
+            if (loginListener != null) {
+                loginListener.onLoginSuccess(user);
+            }
+        } else {
+            JOptionPane.showMessageDialog(
+                this,
+                "Invalid username or password.",
+                "Login Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+}
+```
+
+## Step 6: Create Register UI
+
+```java
+// RegisterPanel.java
+package com.stockmanager.ui.auth;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+
+import com.stockmanager.controllers.AuthController;
+import com.stockmanager.models.User;
+import com.stockmanager.ui.theme.DraculaTheme;
+import com.stockmanager.utils.UIUtils;
+
+/**
+ * Panel for user registration
+ */
+public class RegisterPanel extends JPanel {
+    private AuthController authController;
+    private RegisterListener registerListener;
+
+    private JTextField usernameField;
+    private JPasswordField passwordField;
+    private JPasswordField confirmPasswordField;
+    private JTextField fullNameField;
+    private JTextField emailField;
+    private JButton registerButton;
+    private JButton cancelButton;
+
+    /**
+     * Interface for register event handling
+     */
+    public interface RegisterListener {
+        void onRegisterSuccess(User user);
+        void onCancel();
+    }
+
+    public RegisterPanel(AuthController authController, RegisterListener listener) {
+        this.authController = authController;
+        this.registerListener = listener;
+
+        // Initialize the UI
+        initializeUI();
+    }
+
+    private void initializeUI() {
+        // Set up the panel
+        setBackground(DraculaTheme.BACKGROUND);
+        setLayout(new BorderLayout(20, 20));
+        setBorder(BorderFactory.createEmptyBorder(30, 30, 30, 30));
+
+        // Create header
+        JLabel headerLabel = new JLabel("Stock Management System");
+        headerLabel.setFont(new Font("Dialog", Font.BOLD, 24));
+        headerLabel.setForeground(DraculaTheme.PURPLE);
+        headerLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        headerLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 30, 0));
+
+        // Create registration form
+        JPanel formPanel = new JPanel(new GridBagLayout());
+        formPanel.setBackground(DraculaTheme.BACKGROUND);
+        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 100, 20, 100));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(10, 10, 10, 10);
+
+        // Form title
+        JLabel formTitle = UIUtils.createHeaderLabel("Create Account");
+        formTitle.setHorizontalAlignment(SwingConstants.CENTER);
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.gridwidth = 2;
+        formPanel.add(formTitle, gbc);
+
+        // Username field
+        JLabel usernameLabel = UIUtils.createStyledLabel("Username*:");
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.gridwidth = 1;
+        formPanel.add(usernameLabel, gbc);
+
+        usernameField = UIUtils.createStyledTextField();
+        gbc.gridx = 1;
+        gbc.gridy = 1;
+        formPanel.add(usernameField, gbc);
+
+        // Password field
+        JLabel passwordLabel = UIUtils.createStyledLabel("Password*:");
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        formPanel.add(passwordLabel, gbc);
+
+        passwordField = new JPasswordField();
+        passwordField.setBackground(DraculaTheme.CURRENT_LINE);
+        passwordField.setForeground(DraculaTheme.FOREGROUND);
+        passwordField.setCaretColor(DraculaTheme.FOREGROUND);
+        passwordField.setBorder(UIUtils.createTextFieldBorder());
+        gbc.gridx = 1;
+        gbc.gridy = 2;
+        formPanel.add(passwordField, gbc);
+
+        // Confirm Password field
+        JLabel confirmPasswordLabel = UIUtils.createStyledLabel("Confirm Password*:");
+        gbc.gridx = 0;
+        gbc.gridy = 3;
+        formPanel.add(confirmPasswordLabel, gbc);
+
+        confirmPasswordField = new JPasswordField();
+        confirmPasswordField.setBackground(DraculaTheme.CURRENT_LINE);
+        confirmPasswordField.setForeground(DraculaTheme.FOREGROUND);
+        confirmPasswordField.setCaretColor(DraculaTheme.FOREGROUND);
+        confirmPasswordField.setBorder(UIUtils.createTextFieldBorder());
+        gbc.gridx = 1;
+        gbc.gridy = 3;
+        formPanel.add(confirmPasswordField, gbc);
+
+        // Full Name field
+        JLabel fullNameLabel = UIUtils.createStyledLabel("Full Name:");
+        gbc.gridx = 0;
+        gbc.gridy = 4;
+        formPanel.add(fullNameLabel, gbc);
+
+        fullNameField = UIUtils.createStyledTextField();
+        gbc.gridx = 1;
+        gbc.gridy = 4;
+        formPanel.add(fullNameField, gbc);
+
+        // Email field
+        JLabel emailLabel = UIUtils.createStyledLabel("Email:");
+        gbc.gridx = 0;
+        gbc.gridy = 5;
+        formPanel.add(emailLabel, gbc);
+
+        emailField = UIUtils.createStyledTextField();
+        gbc.gridx = 1;
+        gbc.gridy = 5;
+        formPanel.add(emailField, gbc);
+
+        // Required fields note
+        JLabel requiredNote = UIUtils.createStyledLabel("* Required fields");
+        requiredNote.setForeground(DraculaTheme.COMMENT);
+        gbc.gridx = 0;
+        gbc.gridy = 6;
+        gbc.gridwidth = 2;
+        formPanel.add(requiredNote, gbc);
+
+        // Buttons panel
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 0));
+        buttonPanel.setBackground(DraculaTheme.BACKGROUND);
+
+        registerButton = UIUtils.createStyledButton("Register");
+        cancelButton = UIUtils.createStyledButton("Cancel");
+
+        buttonPanel.add(registerButton);
+        buttonPanel.add(cancelButton);
+
+        gbc.gridx = 0;
+        gbc.gridy = 7;
+        gbc.insets = new Insets(30, 10, 10, 10);
+        formPanel.add(buttonPanel, gbc);
+
+        // Add components to main panel
+        add(headerLabel, BorderLayout.NORTH);
+        add(formPanel, BorderLayout.CENTER);
+
+        // Set action listeners
+        registerButton.addActionListener(this::handleRegister);
+        cancelButton.addActionListener(e -> {
+            if (registerListener != null) {
+                registerListener.onCancel();
+            }
+        });
+    }
+
+    private void handleRegister(ActionEvent e) {
+        String username = usernameField.getText().trim();
+        String password = new String(passwordField.getPassword());
+        String confirmPassword = new String(confirmPasswordField.getPassword());
+        String fullName = fullNameField.getText().trim();
+        String email = emailField.getText().trim();
+
+        // Validate inputs
+        if (username.isEmpty() || password.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Username and password are required.",
+                "Registration Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
+
+        if (!password.equals(confirmPassword)) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Passwords do not match.",
+                "Registration Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
+
+        // Attempt registration
+        User user = authController.register(username, password, fullName, email);
+
+        if (user != null) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Registration successful!",
+                "Success",
+                JOptionPane.INFORMATION_MESSAGE
+            );
+
+            if (registerListener != null) {
+                registerListener.onRegisterSuccess(user);
+            }
+        } else {
+            JOptionPane.showMessageDialog(
+                this,
+                "Registration failed. Username may already be taken.",
+                "Registration Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+}
+```
+
+## Step 7: Create Auth Dialog
+
+```java
+// AuthDialog.java
+package com.stockmanager.ui.auth;
+
+import javax.swing.*;
+import java.awt.*;
+
+import com.stockmanager.controllers.AuthController;
+import com.stockmanager.models.User;
+import com.stockmanager.ui.theme.DraculaTheme;
+
+/**
+ * Dialog for user authentication (login and registration)
+ */
+public class AuthDialog extends JDialog {
+    private CardLayout cardLayout;
+    private JPanel cardPanel;
+
+    private LoginPanel loginPanel;
+    private RegisterPanel registerPanel;
+
+    private AuthController authController;
+    private AuthListener authListener;
+
+    /**
+     * Interface for auth event handling
+     */
+    public interface AuthListener {
+        void onAuthSuccess(User user);
+    }
+
+    public AuthDialog(JFrame parent, AuthController authController, AuthListener listener) {
+        super(parent, "Authentication", true);
+        this.authController = authController;
+        this.authListener = listener;
+
+        // Initialize the UI
+        initializeUI();
+    }
+
+    private void initializeUI() {
+        // Set up the dialog
+        getContentPane().setBackground(DraculaTheme.BACKGROUND);
+        setSize(600, 500);
+        setLocationRelativeTo(getOwner());
+        setResizable(false);
+
+        // Create card layout for switching between login and register
+        cardLayout = new CardLayout();
+        cardPanel = new JPanel(cardLayout);
+        cardPanel.setBackground(DraculaTheme.BACKGROUND);
+
+        // Create login panel
+        loginPanel = new LoginPanel(authController, new LoginPanel.LoginListener() {
+            @Override
+            public void onLoginSuccess(User user) {
+                if (authListener != null) {
+                    authListener.onAuthSuccess(user);
+                }
+                dispose();
+            }
+
+            @Override
+            public void onSwitchToRegister() {
+                cardLayout.show(cardPanel, "register");
+            }
+        });
+
+        // Create register panel
+        registerPanel = new RegisterPanel(authController, new RegisterPanel.RegisterListener() {
+            @Override
+            public void onRegisterSuccess(User user) {
+                if (authListener != null) {
+                    authListener.onAuthSuccess(user);
+                }
+                dispose();
+            }
+
+            @Override
+            public void onCancel() {
+                cardLayout.show(cardPanel, "login");
+            }
+        });
+
+        // Add panels to card layout
+        cardPanel.add(loginPanel, "login");
+        cardPanel.add(registerPanel, "register");
+
+        // Show login panel by default
+        cardLayout.show(cardPanel, "login");
+
+        getContentPane().add(cardPanel);
+    }
+}
+```
+
+## Step 8: Create User Profile Panel
+
+```java
+// UserProfilePanel.java
+package com.stockmanager.ui.user;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+
+import com.stockmanager.controllers.AuthController;
+import com.stockmanager.models.User;
+import com.stockmanager.ui.theme.DraculaTheme;
+import com.stockmanager.utils.UIUtils;
+
+/**
+ * Panel for viewing and editing user profile
+ */
+public class UserProfilePanel extends JPanel {
+    private AuthController authController;
+
+    private JTextField usernameField;
+    private JTextField fullNameField;
+    private JTextField emailField;
+    private JTextField roleField;
+    private JTextField createdAtField;
+
+    private JButton updateProfileButton;
+    private JButton changePasswordButton;
+
+    public UserProfilePanel(AuthController authController) {
+        this.authController = authController;
+
+        // Initialize the UI
+        initializeUI();
+
+        // Load user data
+        loadUserData();
+    }
+
+    private void initializeUI() {
+        // Set up the panel
+        setBackground(DraculaTheme.BACKGROUND);
+        setLayout(new BorderLayout(20, 20));
+        setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+        // Create header
+        JLabel headerLabel = UIUtils.createHeaderLabel("User Profile");
+        headerLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 20, 0));
+        add(headerLabel, BorderLayout.NORTH);
+
+        // Create form panel
+        JPanel formPanel = new JPanel(new GridBagLayout());
+        formPanel.setBackground(DraculaTheme.BACKGROUND);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(10, 10, 10, 10);
+
+        // Username field (read-only)
+        JLabel usernameLabel = UIUtils.createStyledLabel("Username:");
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        formPanel.add(usernameLabel, gbc);
+
+        usernameField = UIUtils.createStyledTextField();
+        usernameField.setEditable(false);
+        usernameField.setBackground(DraculaTheme.COMMENT);
+        gbc.gridx = 1;
+        gbc.gridy = 0;
+        gbc.weightx = 1.0;
+        formPanel.add(usernameField, gbc);
+
+        // Full Name field
+        JLabel fullNameLabel = UIUtils.createStyledLabel("Full Name:");
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.weightx = 0.0;
+        formPanel.add(fullNameLabel, gbc);
+
+        fullNameField = UIUtils.createStyledTextField();
+        gbc.gridx = 1;
+        gbc.gridy = 1;
+        gbc.weightx = 1.0;
+        formPanel.add(fullNameField, gbc);
+
+        // Email field
+        JLabel emailLabel = UIUtils.createStyledLabel("Email:");
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        gbc.weightx = 0.0;
+        formPanel.add(emailLabel, gbc);
+
+        emailField = UIUtils.createStyledTextField();
+        gbc.gridx = 1;
+        gbc.gridy = 2;
+        gbc.weightx = 1.0;
+        formPanel.add(emailField, gbc);
+
+        // Role field (read-only)
+        JLabel roleLabel = UIUtils.createStyledLabel("Role:");
+        gbc.gridx = 0;
+        gbc.gridy = 3;
+        gbc.weightx = 0.0;
+        formPanel.add(roleLabel, gbc);
+
+        roleField = UIUtils.createStyledTextField();
+        roleField.setEditable(false);
+        roleField.setBackground(DraculaTheme.COMMENT);
+        gbc.gridx = 1;
+        gbc.gridy = 3;
+        gbc.weightx = 1.0;
+        formPanel.add(roleField, gbc);
+
+        // Created At field (read-only)
+        JLabel createdAtLabel = UIUtils.createStyledLabel("Member Since:");
+        gbc.gridx = 0;
+        gbc.gridy = 4;
+        gbc.weightx = 0.0;
+        formPanel.add(createdAtLabel, gbc);
+
+        createdAtField = UIUtils.createStyledTextField();
+        createdAtField.setEditable(false);
+        createdAtField.setBackground(DraculaTheme.COMMENT);
+        gbc.gridx = 1;
+        gbc.gridy = 4;
+        gbc.weightx = 1.0;
+        formPanel.add(createdAtField, gbc);
+
+        // Add form panel to center
+        add(formPanel, BorderLayout.CENTER);
+
+        // Create buttons panel
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        buttonPanel.setBackground(DraculaTheme.BACKGROUND);
+
+        updateProfileButton = UIUtils.createStyledButton("Update Profile");
+        changePasswordButton = UIUtils.createStyledButton("Change Password");
+
+        buttonPanel.add(updateProfileButton);
+        buttonPanel.add(changePasswordButton);
+
+        add(buttonPanel, BorderLayout.SOUTH);
+
+        // Set action listeners
+        updateProfileButton.addActionListener(this::handleUpdateProfile);
+        changePasswordButton.addActionListener(this::handleChangePassword);
+    }
+
+    private void loadUserData() {
+        User user = authController.getCurrentUser();
+        if (user != null) {
+            usernameField.setText(user.getUsername());
+            fullNameField.setText(user.getFullName());
+            emailField.setText(user.getEmail());
+            roleField.setText(user.getRole());
+
+            // Format created date if available
+            if (user.getCreatedAt() != null) {
+                createdAtField.setText(user.getCreatedAt().toString());
+            } else {
+                createdAtField.setText("N/A");
+            }
+        }
+    }
+
+    private void handleUpdateProfile(ActionEvent e) {
+        String fullName = fullNameField.getText().trim();
+        String email = emailField.getText().trim();
+
+        boolean success = authController.updateProfile(fullName, email);
+
+        if (success) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Profile updated successfully.",
+                "Success",
+                JOptionPane.INFORMATION_MESSAGE
+            );
+        } else {
+            JOptionPane.showMessageDialog(
+                this,
+                "Failed to update profile.",
+                "Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+
+    private void handleChangePassword(ActionEvent e) {
+        // Show change password dialog
+        JPanel panel = new JPanel(new GridLayout(3, 2, 5, 5));
+        panel.setBackground(DraculaTheme.BACKGROUND);
+
+        JLabel currentPassLabel = UIUtils.createStyledLabel("Current Password:");
+        JLabel newPassLabel = UIUtils.createStyledLabel("New Password:");
+        JLabel confirmPassLabel = UIUtils.createStyledLabel("Confirm Password:");
+
+        JPasswordField currentPassField = new JPasswordField();
+        JPasswordField newPassField = new JPasswordField();
+        JPasswordField confirmPassField = new JPasswordField();
+
+        currentPassField.setBackground(DraculaTheme.CURRENT_LINE);
+        currentPassField.setForeground(DraculaTheme.FOREGROUND);
+        newPassField.setBackground(DraculaTheme.CURRENT_LINE);
+        newPassField.setForeground(DraculaTheme.FOREGROUND);
+        confirmPassField.setBackground(DraculaTheme.CURRENT_LINE);
+        confirmPassField.setForeground(DraculaTheme.FOREGROUND);
+
+        panel.add(currentPassLabel);
+        panel.add(currentPassField);
+        panel.add(newPassLabel);
+        panel.add(newPassField);
+        panel.add(confirmPassLabel);
+        panel.add(confirmPassField);
+
+        int result = JOptionPane.showConfirmDialog(
+            this, panel, "Change Password",
+            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE
+        );
+
+        if (result == JOptionPane.OK_OPTION) {
+            String currentPass = new String(currentPassField.getPassword());
+            String newPass = new String(newPassField.getPassword());
+            String confirmPass = new String(confirmPassField.getPassword());
+
+            if (currentPass.isEmpty() || newPass.isEmpty() || confirmPass.isEmpty()) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "All fields are required.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+                );
+                return;
+            }
+
+            if (!newPass.equals(confirmPass)) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "New passwords do not match.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+                );
+                return;
+            }
+
+            boolean success = authController.changePassword(currentPass, newPass);
+
+            if (success) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Password changed successfully.",
+                    "Success",
+                    JOptionPane.INFORMATION_MESSAGE
+                );
+            } else {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Failed to change password. Make sure your current password is correct.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+                );
+            }
+        }
+    }
+}
+```
+
+## Step 9: Update MainFrame to Include Authentication
+
+```java
+// MainFrame.java (Updated)
+package com.stockmanager.ui;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+
+import com.stockmanager.controllers.AnalyticsController;
+import com.stockmanager.controllers.AuthController;
+import com.stockmanager.controllers.StockController;
+import com.stockmanager.models.User;
+import com.stockmanager.ui.analytics.AnalyticsPanel;
+import com.stockmanager.ui.auth.AuthDialog;
+import com.stockmanager.ui.dashboard.DashboardPanel;
+import com.stockmanager.ui.stock.StockListPanel;
+import com.stockmanager.ui.theme.DraculaTheme;
+import com.stockmanager.ui.user.UserProfilePanel;
+import com.stockmanager.utils.DatabaseHelper;
+import com.stockmanager.utils.UIUtils;
+
+/**
+ * Main application window with navigation and content panels
+ */
+public class MainFrame extends JFrame {
+    private JPanel navigationPanel;
+    private JPanel contentPanel;
+    private CardLayout cardLayout;
+
+    // Controllers
+    private AuthController authController;
+    private StockController stockController;
+    private AnalyticsController analyticsController;
+
+    // Panels
+    private DashboardPanel dashboardPanel;
+    private StockListPanel stockListPanel;
+    private AnalyticsPanel analyticsPanel;
+    private UserProfilePanel userProfilePanel;
+
+    // User info components
+    private JLabel userNameLabel;
+    private JButton logoutButton;
+
+    public MainFrame() {
+        // Initialize database
+        DatabaseHelper.initializeDatabase();
+
+        // Initialize controllers
+        authController = new AuthController();
+        stockController = new StockController();
+        analyticsController = new AnalyticsController(stockController);
+
+        // Initialize the UI
+        initializeUI();
+
+        // Show login dialog on startup
+        showLoginDialog();
+
+        // Add window closing listener to close database connection
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                DatabaseHelper.closeConnection();
+            }
+        });
+    }
+
+    private void initializeUI() {
+        // Apply Dracula theme
+        DraculaTheme.apply();
+
+        // Set up the main frame
+        setTitle("Stock Management System");
+        setSize(1200, 800);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        // Set up the main layout
+        setLayout(new BorderLayout());
+
+        // Create the navigation panel
+        navigationPanel = createNavigationPanel();
+        add(navigationPanel, BorderLayout.WEST);
+
+        // Create the content panel with card layout
+        contentPanel = new JPanel();
+        cardLayout = new CardLayout();
+        contentPanel.setLayout(cardLayout);
+        contentPanel.setBackground(DraculaTheme.BACKGROUND);
+
+        // Create the panels
+        dashboardPanel = new DashboardPanel(stockController, analyticsController);
+        stockListPanel = new StockListPanel(stockController);
+        analyticsPanel = new AnalyticsPanel(analyticsController);
+        userProfilePanel = new UserProfilePanel(authController);
+
+        // Add panels to card layout
+        contentPanel.add(dashboardPanel, "dashboard");
+        contentPanel.add(stockListPanel, "stock");
+        contentPanel.add(analyticsPanel, "analytics");
+        contentPanel.add(userProfilePanel, "profile");
+
+        add(contentPanel, BorderLayout.CENTER);
+
+        // Show dashboard initially
+        cardLayout.show(contentPanel, "dashboard");
+    }
+
+    private JPanel createNavigationPanel() {
+        JPanel panel = new JPanel();
+        panel.setPreferredSize(new Dimension(200, getHeight()));
+        panel.setBackground(DraculaTheme.CURRENT_LINE);
+        panel.setLayout(new BorderLayout());
+
+        // Top section with app title
+        JPanel topPanel = new JPanel();
+        topPanel.setBackground(DraculaTheme.CURRENT_LINE);
+        topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
+
+        JLabel titleLabel = new JLabel("Stock Manager");
+        titleLabel.setFont(new Font("Dialog", Font.BOLD, 20));
+        titleLabel.setForeground(DraculaTheme.PURPLE);
+        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        titleLabel.setBorder(BorderFactory.createEmptyBorder(20, 0, 30, 0));
+
+        topPanel.add(titleLabel);
+
+        // Navigation buttons
+        JPanel navButtonsPanel = new JPanel();
+        navButtonsPanel.setBackground(DraculaTheme.CURRENT_LINE);
+        navButtonsPanel.setLayout(new BoxLayout(navButtonsPanel, BoxLayout.Y_AXIS));
+
+        JButton dashboardButton = createNavButton("Dashboard", "dashboard");
+        JButton stockButton = createNavButton("Stock Management", "stock");
+        JButton analyticsButton = createNavButton("Analytics", "analytics");
+        JButton profileButton = createNavButton("Profile", "profile");
+
+        navButtonsPanel.add(dashboardButton);
+        navButtonsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        navButtonsPanel.add(stockButton);
+        navButtonsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        navButtonsPanel.add(analyticsButton);
+        navButtonsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        navButtonsPanel.add(profileButton);
+        navButtonsPanel.add(Box.createVerticalGlue());
+
+        // Bottom section with user info and logout
+        JPanel userPanel = new JPanel();
+        userPanel.setBackground(DraculaTheme.CURRENT_LINE);
+        userPanel.setLayout(new BoxLayout(userPanel, BoxLayout.Y_AXIS));
+        userPanel.setBorder(BorderFactory.createEmptyBorder(20, 10, 20, 10));
+
+        userNameLabel = new JLabel("Not logged in");
+        userNameLabel.setForeground(DraculaTheme.FOREGROUND);
+        userNameLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        logoutButton = UIUtils.createStyledButton("Logout");
+        logoutButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        logoutButton.setMaximumSize(new Dimension(180, 40));
+        logoutButton.addActionListener(e -> handleLogout());
+
+        userPanel.add(userNameLabel);
+        userPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        userPanel.add(logoutButton);
+
+        // Assemble navigation panel
+        panel.add(topPanel, BorderLayout.NORTH);
+        panel.add(navButtonsPanel, BorderLayout.CENTER);
+        panel.add(userPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    private JButton createNavButton(String text, String cardName) {
+        JButton button = new JButton(text);
+        button.setMaximumSize(new Dimension(180, 40));
+        button.setAlignmentX(Component.CENTER_ALIGNMENT);
+        button.setBackground(DraculaTheme.CURRENT_LINE);
+        button.setForeground(DraculaTheme.FOREGROUND);
+        button.setFocusPainted(false);
+        button.setBorderPainted(false);
+        button.setFont(new Font("Dialog", Font.BOLD, 14));
+
+        button.addActionListener(e -> cardLayout.show(contentPanel, cardName));
+
+        // Add hover effect
+        button.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseEntered(java.awt.event.MouseEvent evt) {
+                button.setBackground(DraculaTheme.PURPLE);
+            }
+
+            public void mouseExited(java.awt.event.MouseEvent evt) {
+                button.setBackground(DraculaTheme.CURRENT_LINE);
+            }
+        });
+
+        return button;
+    }
+
+    private void showLoginDialog() {
+        AuthDialog authDialog = new AuthDialog(this, authController, new AuthDialog.AuthListener() {
+            @Override
+            public void onAuthSuccess(User user) {
+                updateUserInfo(user);
+            }
+        });
+
+        authDialog.setVisible(true);
+
+        // If after dialog closes, user is still not logged in, exit the application
+        if (!authController.isLoggedIn()) {
+            System.exit(0);
+        }
+    }
+
+    private void handleLogout() {
+        int option = JOptionPane.showConfirmDialog(
+            this,
+            "Are you sure you want to logout?",
+            "Confirm Logout",
+            JOptionPane.YES_NO_OPTION
+        );
+
+        if (option == JOptionPane.YES_OPTION) {
+            authController.logout();
+            showLoginDialog();
+        }
+    }
+
+    private void updateUserInfo(User user) {
+        if (user != null) {
+            userNameLabel.setText(user.getUsername());
+
+            // Refresh user profile panel
+            userProfilePanel = new UserProfilePanel(authController);
+            contentPanel.remove(contentPanel.getComponent(3));  // Remove existing profile panel
+            contentPanel.add(userProfilePanel, "profile");
+        }
+    }
+}
+```
+
+## Step 10: Update Main Class
+
+```java
+// Main.java (Updated)
+package com.stockmanager;
+
+import com.stockmanager.ui.MainFrame;
+
+/**
+ * Main entry point for the Stock Management System application
+ */
+public class Main {
+    public static void main(String[] args) {
+        // Load SQLite JDBC driver
+        try {
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException e) {
+            System.err.println("SQLite JDBC driver not found");
+            e.printStackTrace();
+            return;
+        }
+
+        // Start the application on the Event Dispatch Thread
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            new MainFrame().setVisible(true);
+        });
+    }
+}
+```
+
+## Step 11: Update build.gradle
+
+```gradle
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.stockmanager'
+version = '1.0-SNAPSHOT'
+sourceCompatibility = '11'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // SQLite JDBC driver
+    implementation 'org.xerial:sqlite-jdbc:3.36.0.3'
+
+    // JFreeChart for data visualization
+    implementation 'org.jfree:jfreechart:1.5.3'
+
+    // FlatLaf for modern Swing look and feel
+    implementation 'com.formdev:flatlaf:2.6'
+
+    // Testing
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
+}
+
+application {
+    mainClass = 'com.stockmanager.Main'
+}
+
+test {
+    useJUnitPlatform()
+}
+```
+
+This complete implementation provides:
+
+1. SQLite database integration for persistent storage
+2. User authentication (login/register/logout)
+3. User profile management
+4. Proper database initialization with sample data
+5. Secure handling of user credentials (though in a real app you'd want to hash passwords)
+6. A responsive UI that handles authentication state
+
+The application now starts with a login screen and requires authentication before accessing the stock management functionality. Users can create new accounts, update their profiles, and change passwords. The database ensures that all data persists between application restarts.

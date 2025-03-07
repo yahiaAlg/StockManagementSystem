@@ -1,4 +1,4 @@
-﻿// StockFormPanel.java - Complete implementation
+// StockFormPanel.java - Complete implementation
 package com.stockmanager.ui.stock;
 
 import javax.swing.*;

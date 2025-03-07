@@ -1,4 +1,4 @@
-﻿// AnalyticsPanel.java - Complete implementation
+// AnalyticsPanel.java - Complete implementation
 package com.stockmanager.ui.analytics;
 
 import javax.swing.*;

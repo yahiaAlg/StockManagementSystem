@@ -1,4 +1,4 @@
-﻿// DashboardPanel.java - Complete implementation
+// DashboardPanel.java - Complete implementation
 package com.stockmanager.ui.dashboard;
 
 import javax.swing.*;

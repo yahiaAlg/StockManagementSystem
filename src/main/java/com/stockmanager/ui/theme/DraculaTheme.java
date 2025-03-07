@@ -1,4 +1,4 @@
-﻿// DraculaTheme.java - Complete implementation
+// DraculaTheme.java - Complete implementation
 package com.stockmanager.ui.theme;
 
 import javax.swing.*;

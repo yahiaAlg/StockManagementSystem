@@ -1,4 +1,4 @@
-﻿// UIUtils.java - Complete implementation
+// UIUtils.java - Complete implementation
 package com.stockmanager.utils;
 
 import javax.swing.*;

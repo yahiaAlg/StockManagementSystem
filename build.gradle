@@ -1,32 +1,53 @@
-﻿plugins {
+plugins {
     id 'java'
     id 'application'
 }
 
 group = 'com.stockmanager'
 version = '1.0-SNAPSHOT'
-sourceCompatibility = '17'
+sourceCompatibility = '11'
+
+// Explicitly define your source sets
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java', 'src']
+        }
+        resources {
+            srcDirs = ['src/main/resources', 'resources']
+        }
+    }
+}
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
+    // SQLite JDBC driver
+    implementation 'org.xerial:sqlite-jdbc:3.36.0.3'
+    
     // JFreeChart for data visualization
     implementation 'org.jfree:jfreechart:1.5.3'
-    
+
     // FlatLaf for modern Swing look and feel
     implementation 'com.formdev:flatlaf:2.6'
-    
+
     // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
 }
 
 application {
-    mainClass = 'com.stockmanager.Main'
+    mainClassName = 'com.stockmanager.Main'
+    mainClass.set('com.stockmanager.Main')
 }
 
 test {
     useJUnitPlatform()
+}
+
+// Run task with full classpath scanning
+run {
+    classpath = sourceSets.main.runtimeClasspath
 }

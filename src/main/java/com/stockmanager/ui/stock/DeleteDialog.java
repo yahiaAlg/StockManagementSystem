@@ -1,4 +1,4 @@
-﻿// DeleteDialog.java - Complete implementation
+// DeleteDialog.java - Complete implementation
 package com.stockmanager.ui.stock;
 
 import javax.swing.*;

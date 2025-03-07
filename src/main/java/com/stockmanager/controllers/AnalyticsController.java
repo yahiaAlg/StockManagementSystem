@@ -1,4 +1,4 @@
-﻿// AnalyticsController.java - Complete implementation
+// AnalyticsController.java - Complete implementation
 package com.stockmanager.controllers;
 
 import com.stockmanager.models.StockItem;
