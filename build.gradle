@@ -1,20 +1,20 @@
 plugins {
     id 'java'
     id 'application'
+    id 'org.beryx.runtime' version '1.13.0'
 }
 
 group = 'com.stockmanager'
 version = '1.0-SNAPSHOT'
 sourceCompatibility = '11'
 
-// Explicitly define your source sets
 sourceSets {
     main {
         java {
             srcDirs = ['src/main/java', 'src']
         }
         resources {
-            srcDirs = ['src/main/resources', 'resources']
+            srcDirs = ['src/main/resources']
         }
     }
 }
@@ -24,16 +24,9 @@ repositories {
 }
 
 dependencies {
-    // SQLite JDBC driver
     implementation 'org.xerial:sqlite-jdbc:3.36.0.3'
-    
-    // JFreeChart for data visualization
     implementation 'org.jfree:jfreechart:1.5.3'
-
-    // FlatLaf for modern Swing look and feel
     implementation 'com.formdev:flatlaf:2.6'
-
-    // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
 }
@@ -43,11 +36,27 @@ application {
     mainClass.set('com.stockmanager.Main')
 }
 
-test {
-    useJUnitPlatform()
+jar {
+    manifest {
+        attributes('Main-Class': 'com.stockmanager.Main')
+    }
+    from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-// Run task with full classpath scanning
-run {
-    classpath = sourceSets.main.runtimeClasspath
+runtime {
+    options = ['--strip-debug', '--compress', '2', '--no-header-files', '--no-man-pages']
+    
+    jpackage {
+        skipInstaller = false
+        imageOptions = ['--icon', 'src/main/resources/icon.ico']
+        installerOptions = [
+            '--win-per-user-install', 
+            '--win-dir-chooser', 
+            '--win-menu', 
+            '--win-shortcut',
+            '--app-version', "${project.version}",
+            '--vendor', "YourCompany"
+        ]
+    }
 }

@@ -40,7 +40,7 @@ public class AuthDialog extends JDialog {
     private void initializeUI() {
         // Set up the dialog
         getContentPane().setBackground(DraculaTheme.BACKGROUND);
-        setSize(600, 500);
+        setSize(600, 600);
         setLocationRelativeTo(getOwner());
         setResizable(false);
         
